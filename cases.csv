@@ -1,1 +1,101 @@
-id,symptom,topology_note,show_output,expected_fault,osi_layer,concept_tag,severity
+"id","symptom","topology_note","show_output","expected_fault","osi_layer","concept_tag","severity"
+"1","PC gets IP but cannot ping gateway in VLAN 10","PC1 connected to Switch Port Fa0/1 assigned to VLAN 10","interface FastEthernet0/1
+ switchport access vlan 20","Switchport assigned to wrong VLAN (VLAN 20 instead of 10)","Layer 2","VLAN","Sev 2"
+"2","PC1 cannot obtain IP address via DHCP","PC1 -> Switch -> Router DHCP Server","ip dhcp pool LAN
+ network 192.168.1.0 255.255.255.0
+ default-router 192.168.1.254
+interface GigabitEthernet0/0
+ shutdown","Router DHCP interface G0/0 is shutdown","Layer 1","DHCP","Sev 1"
+"3","PC in VLAN 30 cannot ping Server in VLAN 40","Router-on-a-stick topology","interface GigabitEthernet0/0.30
+ encapsulation dot1Q 30
+ ip address 192.168.30.1 255.255.255.0
+interface GigabitEthernet0/0.40
+ shutdown","Subinterface G0/0.40 is down preventing inter-VLAN routing","Layer 3","Routing","Sev 1"
+"4","Guest Wi-Fi user can ping internal corporate server","Guest AP connected to Switch Fa0/5","ip access-list extended GUEST_ACL
+ permit ip 10.0.0.0 0.0.255.255 192.168.1.0 0.0.0.255","ACL rules permit guest access to corporate subnet instead of denying it","Layer 4","ACL","Sev 2"
+"5","Web server unreachable from external internet","Edge Router performing NAT overloading","ip nat inside source list 1 interface GigabitEthernet0/1 overload
+access-list 1 permit 10.0.0.0 0.0.255.255","Static NAT translation missing for internal Web Server (10.0.0.50:80)","Layer 3","NAT","Sev 1"
+"6","Branch PC cannot resolve domain names (www.cisco.com)","PC1 configured with static IP","ipconfig /all
+ IPv4 Address: 192.168.1.10
+ Subnet Mask: 255.255.255.0
+ Default Gateway: 192.168.1.1
+ DNS Server: 0.0.0.0","DNS server address missing on PC configuration","Layer 7","DNS","Sev 3"
+"7","Trunk link between Switch1 and Switch2 inactive","Switch1 Fa0/24 connected to Switch2 Fa0/24","Switch1# show interfaces trunk
+Port Mode Encapsulation Status Native vlan
+Fa0/24 access auto trunking 1
+Switch2# show interfaces trunk
+Fa0/24 access auto trunking 1","Switchport mode set to access instead of trunk","Layer 2","VLAN","Sev 2"
+"8","Two PCs experience periodic connection drops","PC1 (192.168.1.10) and PC2 (192.168.1.10)","PC1 ipconfig: 192.168.1.10
+PC2 ipconfig: 192.168.1.10","Duplicate IP address configured on two hosts in same subnet","Layer 3","Gateway","Sev 2"
+"9","OSPF neighbor relationship not forming between R1 and R2","R1 G0/0 connected to R2 G0/0","R1# show ip ospf interface G0/0
+ Area 0, Dead 40, Hello 10
+R2# show ip ospf interface G0/0
+ Area 0, Dead 40, Hello 15","OSPF Hello timer mismatch (10s vs 15s)","Layer 3","Routing","Sev 1"
+"10","PC cannot reach any host outside local subnet","PC1 connected to Switch1","ipconfig
+ IP: 192.168.1.50
+ Mask: 255.255.255.0
+ Gateway: 192.168.2.1","Default Gateway IP is on a different subnet than PC IP","Layer 3","Gateway","Sev 2"
+"11","Wireless clients cannot associate with WAP","Corporate Lightweight AP","show wlan 1
+ SSID: CorpNet
+ Security: WPA2-PSK
+ Status: Disabled","WLAN SSID Profile is currently disabled in WLC","Layer 2","Wireless","Sev 2"
+"12","Switch VLAN 20 traffic failing over trunk","Switch1 trunking to Switch2","show interfaces trunk
+ Port: Fa0/24
+ Allowed VLANs: 1-10,30-100","VLAN 20 is pruned or excluded from allowed VLAN list on trunk","Layer 2","VLAN","Sev 2"
+"13","PC ping to router gateway fails intermittently","PC1 -> Switch1 -> R1","show interface GigabitEthernet0/0
+ Half-duplex, 10Mb/s, Input errors: 4521, Collisions: 12400","Duplex mismatch between Router interface (Half) and Switch interface (Full)","Layer 1","VLAN","Sev 3"
+"14","Router unable to route packets to Remote Office (172.16.0.0/16)","R1 Core Router","R1# show ip route
+ 10.0.0.0/8 is subnetted
+ 192.168.1.0/24 is subnetted","Missing static route or OSPF network statement for 172.16.0.0/16","Layer 3","Routing","Sev 1"
+"15","SSH access to Core Switch rejected","Admin Workstation -> Core Switch","line vty 0 4
+ transport input telnet
+ login local","VTY lines configured for Telnet only (transport input telnet), SSH blocked","Layer 7","ACL","Sev 3"
+"16","DHCP clients receiving IPs from wrong pool","Switch with multiple VLANs","interface VLAN 10
+ ip address 192.168.10.1 255.255.255.0
+ ip helper-address 10.0.0.5","DHCP Relay (ip helper-address) missing on VLAN 20 SVI interface","Layer 7","DHCP","Sev 2"
+"17","NAT failing for wireless guest users","Branch Edge Router","ip nat inside source list GUEST_ACL interface G0/1 overload
+access-list 100 permit ip 192.168.50.0 0.0.0.255 any
+interface G0/0 (Guest Subnet)
+ ip address 192.168.50.1 255.255.255.0","ip nat inside command missing under interface G0/0","Layer 3","NAT","Sev 2"
+"18","Wireless LAP unable to register with WLC","Lightweight AP -> Switch -> WLC","show ip dhcp binding
+ 192.168.100.15 0011.2233.4455","DHCP Option 43 (WLC IP address) missing in DHCP server pool","Layer 7","Wireless","Sev 1"
+"19","VLAN 50 hosts cannot talk to local gateway","Access Switch Fa0/10 -> PC5","show vlan brief
+ VLAN 10 Active
+ VLAN 30 Active","VLAN 50 does not exist in switch VLAN database","Layer 2","VLAN","Sev 2"
+"20","Web traffic HTTP works but HTTPS times out","HQ Edge Firewall/Router","ip access-list extended OUTSIDE_IN
+ permit tcp any host 192.168.1.10 eq 80
+ deny ip any any","ACL permits HTTP (port 80) but denies HTTPS (port 443)","Layer 4","ACL","Sev 2"
+"21","Inter-VLAN ping fails between VLAN 10 and VLAN 20","L3 Switch","ip routing disabled
+interface Vlan10
+ ip address 192.168.10.1 255.255.255.0
+interface Vlan20
+ ip address 192.168.20.1 255.255.255.0","ip routing command not enabled globally on L3 Switch","Layer 3","Routing","Sev 1"
+"22","PC cannot reach DNS server across WAN","Branch Router R1","R1# show ip route
+ S* 0.0.0.0/0 [1/0] via 203.0.113.2
+R2# show ip access-list
+ deny udp any any eq 53","Upstream ISP/R2 Access List blocks UDP port 53 (DNS)","Layer 4","DNS","Sev 2"
+"23","Port Security shuts down port when laptop connects","Switch Fa0/5","show port-security interface Fa0/5
+ Port Status: Secure-shutdown
+ Violation Mode: Shutdown
+ Max MAC Addresses: 1","Port security violation triggered due to new MAC address on Fa0/5","Layer 2","VLAN","Sev 3"
+"24","Dynamic Routing flapping between R1 and R2","R1 and R2 running EIGRP","R1# show ip EIGRP interfaces
+ EIGRP-IPv4 Autonomous System: 100
+R2# show ip EIGRP interfaces
+ EIGRP-IPv4 Autonomous System: 200","EIGRP Autonomous System (AS) number mismatch (AS 100 vs AS 200)","Layer 3","Routing","Sev 1"
+"25","Outside users cannot access internal FTP Server","Edge NAT Router","ip nat inside source static tcp 192.168.1.20 21 203.0.113.10 8080","NAT Port forwarding maps internal FTP port 21 to external port 8080 instead of 21","Layer 3","NAT","Sev 3"
+"26","Wireless clients disconnected every 5 minutes","WPA2 Enterprise WLAN","show radius-server
+ host 192.168.1.50 auth-port 1812 secret cisco123","RADIUS shared secret key mismatch between WLC and RADIUS Server","Layer 7","Wireless","Sev 2"
+"27","Static Route not appearing in routing table","Core Router R1","ip route 10.5.0.0 255.255.0.0 GigabitEthernet0/2 192.168.10.2
+show ip interface G0/2
+ GigabitEthernet0/2 is administratively down","Next-hop exit interface G0/2 is shutdown, so static route is inactive","Layer 3","Routing","Sev 1"
+"28","PC subnet mask wrong causes local broadcast failure","PC1 connected to Switch","ipconfig
+ IP: 10.0.0.15
+ Mask: 255.255.255.128
+ Gateway: 10.0.0.1
+PC2 IP: 10.0.0.200 (Mask 255.255.255.0)","Subnet mask mismatch (255.255.255.128 puts PC1 and PC2 in different subnets)","Layer 3","Gateway","Sev 2"
+"29","DHCP pool running out of available IP addresses","Branch Office Router","show ip dhcp binding
+ Total bindings: 254
+ip dhcp pool LAN
+ network 192.168.1.0 255.255.255.0","DHCP IP scope exhaustion (254/254 IPs leased)","Layer 7","DHCP","Sev 1"
+"30","Network Monitoring SNMP queries failing","Core Router","snmp-server community PUBLIC RO
+access-list 10 permit 192.168.1.100","SNMP manager station (192.168.1.50) not allowed in ACL 10","Layer 7","ACL","Sev 3"
