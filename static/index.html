@@ -1,1 +1,457 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetSage AI - Cisco Network Troubleshooting</title>
+<meta name="description" content="AI-Assisted Cisco Network Troubleshooting Dashboard">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e17;--surface:#111827;--surface2:#1a2236;--border:#1e2d4a;
+  --text:#e2e8f0;--text2:#94a3b8;--accent:#06b6d4;--accent2:#0ea5e9;
+  --green:#10b981;--yellow:#f59e0b;--red:#ef4444;--orange:#f97316;
+  --radius:10px;--font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --mono:'Cascadia Code','Fira Code','Consolas',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.6;min-height:100vh}
+a{color:var(--accent)}
+.container{max-width:960px;margin:0 auto;padding:0 20px}
+
+/* Header */
+.header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-bottom:1px solid var(--border);padding:24px 0;text-align:center}
+.header h1{font-size:2rem;letter-spacing:3px;color:var(--accent);font-weight:700}
+.header .subtitle{color:var(--text2);font-size:.95rem;margin-top:4px}
+.header-meta{display:flex;justify-content:center;gap:24px;margin-top:12px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:600;letter-spacing:.5px}
+.badge-online{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}
+.badge-online::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.badge-version{background:rgba(6,182,212,.1);color:var(--accent);border:1px solid rgba(6,182,212,.25)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:24px}
+.card-title{font-size:1.05rem;font-weight:700;letter-spacing:1px;color:var(--accent);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-title .icon{font-size:1.1rem}
+
+/* Inputs */
+label{display:block;font-size:.85rem;font-weight:600;color:var(--text2);margin-bottom:6px;letter-spacing:.3px}
+textarea,input[type="text"]{width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:.88rem;resize:vertical;transition:border-color .2s}
+textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
+.input-group{margin-bottom:16px}
+#symptom{min-height:48px}
+#show_output{min-height:120px}
+#topology_note{min-height:48px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 28px;border:none;border-radius:8px;font-family:var(--font);font-size:.9rem;font-weight:700;letter-spacing:.8px;cursor:pointer;transition:all .2s}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0a0e17;width:100%}
+.btn-primary:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px)}
+.btn-sm{padding:8px 18px;font-size:.8rem}
+.btn-accept{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
+.btn-edit{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
+.btn-reject{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+.btn-accept:hover,.btn-edit:hover,.btn-reject:hover{filter:brightness(1.2)}
+.btn-example{background:transparent;color:var(--accent);border:1px solid var(--border);padding:6px 14px;font-size:.78rem;border-radius:6px}
+.btn-example:hover{border-color:var(--accent)}
+
+/* Example box */
+.example-box{background:var(--surface2);border:1px dashed var(--border);border-radius:8px;padding:14px;margin-bottom:16px;font-size:.82rem;color:var(--text2)}
+.example-box code{color:var(--accent);font-family:var(--mono);font-size:.8rem}
+
+/* Results (hidden by default) */
+#results{display:none}
+
+/* Rule checker */
+.rc-status{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:20px;font-size:.82rem;font-weight:700;letter-spacing:.5px;margin-bottom:12px}
+.rc-pass{background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.3)}
+.rc-warn{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
+.finding-item{background:var(--surface2);border-left:3px solid var(--yellow);padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:.88rem}
+
+/* Confidence badges */
+.conf{display:inline-block;padding:4px 14px;border-radius:20px;font-size:.8rem;font-weight:700;letter-spacing:.5px}
+.conf-high{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)}
+.conf-medium{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
+.conf-low{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+
+/* OSI badge */
+.osi-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:.8rem;font-weight:600;background:rgba(6,182,212,.1);color:var(--accent);border:1px solid rgba(6,182,212,.25)}
+
+/* Sim badge */
+.sim-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:700;background:rgba(249,115,22,.12);color:var(--orange);border:1px solid rgba(249,115,22,.3);letter-spacing:.5px;margin-left:8px}
+
+/* Terminal box */
+.terminal{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.88rem;color:var(--green);margin-top:8px;overflow-x:auto;white-space:pre-wrap}
+.terminal-label{font-size:.75rem;font-weight:600;color:var(--text2);letter-spacing:.5px;margin-top:14px}
+
+/* Evidence list */
+.evidence-item{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.88rem}
+.evidence-item:last-child{border-bottom:none}
+.evidence-bullet{color:var(--accent);font-weight:700;flex-shrink:0}
+
+/* Fix steps */
+.fix-step{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:.88rem}
+.fix-step:last-child{border-bottom:none}
+.step-num{background:var(--accent);color:#0a0e17;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0}
+
+/* Root cause */
+.root-cause-text{background:var(--surface2);border-left:3px solid var(--accent);padding:14px 18px;border-radius:0 8px 8px 0;font-size:.95rem;line-height:1.7}
+
+/* Review */
+.review-buttons{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.review-msg{margin-top:12px;font-size:.85rem;color:var(--text2);font-style:italic;min-height:20px}
+
+/* Warning */
+.fix-warning{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;color:var(--yellow);margin-top:12px;display:flex;align-items:center;gap:8px}
+
+/* Error */
+.error-card{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:var(--radius);padding:20px;margin-top:24px;color:var(--red);text-align:center;display:none}
+
+/* Governance */
+.gov-text{color:var(--text2);font-size:.88rem;line-height:1.8}
+.gov-text li{margin-bottom:6px;list-style:none;padding-left:20px;position:relative}
+.gov-text li::before{content:'\2713';position:absolute;left:0;color:var(--green);font-weight:700}
+
+/* Footer */
+.footer{text-align:center;padding:32px 20px;color:var(--text2);font-size:.8rem;border-top:1px solid var(--border);margin-top:40px}
+.footer span{color:var(--accent)}
+
+/* Responsive */
+@media(max-width:640px){
+  .header h1{font-size:1.5rem}
+  .card{padding:16px}
+  .review-buttons{flex-direction:column}
+  .review-buttons .btn{width:100%}
+  .header-meta{gap:10px}
+}
+
+/* Validation msg */
+.validation-msg{color:var(--yellow);font-size:.85rem;margin-bottom:12px;display:none}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="container">
+    <h1>NETSAGE AI</h1>
+    <p class="subtitle">AI-Assisted Cisco Network Troubleshooting</p>
+    <div class="header-meta">
+      <span class="badge badge-version">v1.0 / Level-0</span>
+      <span class="badge badge-online">SYSTEM ONLINE</span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- TROUBLESHOOTING INPUTS -->
+  <div class="card" id="input-card">
+    <div class="card-title"><span class="icon">&#128269;</span> TROUBLESHOOTING INPUTS</div>
+
+    <div class="example-box">
+      <strong>Example Input:</strong><br>
+      <em>Symptom:</em> <code>PC gets IP but cannot ping gateway in VLAN 10</code><br>
+      <em>Topology:</em> <code>PC1 connected to Switch Port Fa0/1 assigned to VLAN 10</code><br>
+      <em>Show output:</em> <code>interface FastEthernet0/1 / switchport access vlan 20</code><br><br>
+      <button class="btn btn-example" id="load-example" type="button">Load Example</button>
+    </div>
+
+    <div class="input-group">
+      <label for="symptom">SYMPTOM DESCRIPTION *</label>
+      <textarea id="symptom" placeholder="Describe the observed network problem..."></textarea>
+    </div>
+    <div class="input-group">
+      <label for="show_output">CISCO "SHOW" COMMAND OUTPUT *</label>
+      <textarea id="show_output" placeholder="Paste relevant Cisco show-command output here..."></textarea>
+    </div>
+    <div class="input-group">
+      <label for="topology_note">TOPOLOGY &amp; CONTEXT NOTES</label>
+      <textarea id="topology_note" placeholder="Optional: device roles, connections, VLAN assignments..."></textarea>
+    </div>
+
+    <div class="validation-msg" id="validation-msg"></div>
+    <button class="btn btn-primary" id="run-btn" type="button">&#9654; RUN DIAGNOSIS</button>
+  </div>
+
+  <!-- ERROR -->
+  <div class="error-card" id="error-card"></div>
+
+  <!-- RESULTS (hidden until diagnosis runs) -->
+  <div id="results">
+
+    <!-- LEVEL-0 RULE CHECKER -->
+    <div class="card" id="rc-card">
+      <div class="card-title"><span class="icon">&#9881;</span> LEVEL-0 RULE CHECKER</div>
+      <div id="rc-status"></div>
+      <div id="rc-flags" style="font-size:.85rem;color:var(--text2);margin-bottom:10px"></div>
+      <div id="rc-findings"></div>
+    </div>
+
+    <!-- DIAGNOSTIC REPORT -->
+    <div class="card" id="diag-card">
+      <div class="card-title">
+        <span class="icon">&#128202;</span> DIAGNOSTIC REPORT
+        <span class="sim-badge" id="mode-badge">LEVEL-0 SIMULATION</span>
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+        <div><span style="font-size:.75rem;color:var(--text2)">CONFIDENCE</span><br><span id="conf-badge" class="conf"></span></div>
+        <div><span style="font-size:.75rem;color:var(--text2)">OSI LAYER</span><br><span id="osi-badge" class="osi-badge"></span></div>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <span style="font-size:.75rem;color:var(--text2);letter-spacing:.5px">ROOT CAUSE DIAGNOSIS</span>
+        <div class="root-cause-text" id="root-cause"></div>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <span style="font-size:.75rem;color:var(--text2);letter-spacing:.5px">SUPPORTING DIAGNOSTIC EVIDENCE</span>
+        <div id="evidence-list" style="margin-top:6px"></div>
+      </div>
+
+      <div class="terminal-label">RECOMMENDED NEXT COMMAND</div>
+      <div class="terminal" id="next-cmd"></div>
+
+      <div class="terminal-label">VERIFICATION COMMAND</div>
+      <div class="terminal" id="verify-cmd"></div>
+    </div>
+
+    <!-- REMEDIATION & FIX STEPS -->
+    <div class="card" id="fix-card">
+      <div class="card-title"><span class="icon">&#128295;</span> REMEDIATION &amp; FIX STEPS</div>
+      <div id="fix-steps"></div>
+      <div class="fix-warning">&#9888; Review before applying configuration changes. These steps are recommendations only.</div>
+    </div>
+
+    <!-- HUMAN REVIEW -->
+    <div class="card" id="review-card">
+      <div class="card-title"><span class="icon">&#128101;</span> HUMAN REVIEW REQUIRED</div>
+      <p style="color:var(--text2);font-size:.9rem;margin-bottom:4px">
+        AI recommendations must be reviewed by a human network engineer before accepting the proposed fix.
+      </p>
+      <div class="review-buttons">
+        <button class="btn btn-sm btn-accept" data-action="accept" type="button">&#10003; ACCEPT</button>
+        <button class="btn btn-sm btn-edit" data-action="edit" type="button">&#9998; EDIT &amp; CORRECT</button>
+        <button class="btn btn-sm btn-reject" data-action="reject" type="button">&#10007; REJECT</button>
+      </div>
+      <div class="review-msg" id="review-msg"></div>
+    </div>
+
+  </div><!-- /results -->
+
+  <!-- RESPONSIBLE AI GOVERNANCE -->
+  <div class="card">
+    <div class="card-title"><span class="icon">&#128737;</span> RESPONSIBLE AI GOVERNANCE</div>
+    <ul class="gov-text">
+      <li>NetSage AI enforces mandatory human-in-the-loop verification.</li>
+      <li>Diagnostic recommendations are advisory and must be reviewed before deployment.</li>
+      <li>The system does not automatically apply network configuration changes.</li>
+      <li>All diagnostic evidence is traceable and structured.</li>
+      <li>Confidence levels reflect the quality of available evidence.</li>
+    </ul>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <p>&copy; 2026 <span>NetSage AI</span> &mdash; Applied AI + Network Troubleshooting Project</p>
+  <p style="margin-top:4px">Level-0 Deterministic Core</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var symptomEl   = document.getElementById("symptom");
+  var showEl      = document.getElementById("show_output");
+  var topoEl      = document.getElementById("topology_note");
+  var runBtn      = document.getElementById("run-btn");
+  var resultsEl   = document.getElementById("results");
+  var errorEl     = document.getElementById("error-card");
+  var valMsg      = document.getElementById("validation-msg");
+
+  /* Load example */
+  document.getElementById("load-example").addEventListener("click", function(){
+    symptomEl.value = "PC gets IP but cannot ping gateway in VLAN 10";
+    topoEl.value    = "PC1 connected to Switch Port Fa0/1 assigned to VLAN 10";
+    showEl.value    = "interface FastEthernet0/1\n switchport access vlan 20";
+  });
+
+  /* Review buttons (UI-only) */
+  document.querySelectorAll("[data-action]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var action = btn.getAttribute("data-action");
+      var labels = {accept:"Accepted",edit:"Edit & Correct",reject:"Rejected"};
+      document.getElementById("review-msg").textContent =
+        "Review action selected: " + (labels[action]||action) +
+        ". Backend review workflow will be implemented in a later step.";
+    });
+  });
+
+  /* Safe text setter */
+  function setText(id, txt){ document.getElementById(id).textContent = txt || ""; }
+
+  /* Run diagnosis */
+  runBtn.addEventListener("click", function(){
+    valMsg.style.display = "none";
+    errorEl.style.display = "none";
+    resultsEl.style.display = "none";
+
+    var symptom = symptomEl.value.trim();
+    var showOut = showEl.value.trim();
+    var topo    = topoEl.value.trim();
+
+    if(!symptom || !showOut){
+      valMsg.textContent = "Please provide both a symptom description and Cisco show-command output.";
+      valMsg.style.display = "block";
+      return;
+    }
+
+    runBtn.disabled = true;
+    runBtn.textContent = "ANALYZING...";
+
+    fetch("/api/diagnose", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({symptom:symptom, show_output:showOut, topology_note:topo})
+    })
+    .then(function(r){
+      if(!r.ok){
+        return r.json().then(function(d){throw new Error(d.message||"Server error "+r.status);});
+      }
+      return r.json();
+    })
+    .then(function(data){
+      if(data.status !== "success"){ throw new Error(data.message||"Unexpected response."); }
+      renderResults(data);
+    })
+    .catch(function(err){
+      errorEl.textContent = err.message || "Backend unavailable. Make sure the Flask server is running.";
+      errorEl.style.display = "block";
+    })
+    .finally(function(){
+      runBtn.disabled = false;
+      runBtn.innerHTML = "&#9654; RUN DIAGNOSIS";
+    });
+  });
+
+  function renderResults(data){
+    var rc   = data.rule_checker || {};
+    var diag = data.ai_diagnosis || {};
+    var mode = data.ai_mode || "unknown";
+
+    /* Mode badge */
+    var modeBadge = document.getElementById("mode-badge");
+    modeBadge.textContent = mode === "level0_simulation" ? "LEVEL-0 SIMULATION" : mode.toUpperCase();
+
+    /* Rule checker */
+    var passed   = rc.rule_checker_passed !== false;
+    var count    = rc.flags_count || 0;
+    var findings = rc.deterministic_findings || [];
+
+    var statusEl = document.getElementById("rc-status");
+    statusEl.innerHTML = "";
+    var span = document.createElement("span");
+    span.className = "rc-status " + (passed ? "rc-pass" : "rc-warn");
+    span.textContent = passed ? "\u2713 PASS" : "\u26A0 WARNING";
+    statusEl.appendChild(span);
+
+    setText("rc-flags", "Deterministic Flags Detected: " + count);
+
+    var findingsEl = document.getElementById("rc-findings");
+    findingsEl.innerHTML = "";
+    if(findings.length === 0){
+      var p = document.createElement("p");
+      p.style.cssText = "color:var(--text2);font-size:.88rem";
+      p.textContent = "\u2713 No deterministic configuration violations detected.";
+      findingsEl.appendChild(p);
+    } else {
+      findings.forEach(function(f){
+        var div = document.createElement("div");
+        div.className = "finding-item";
+        div.textContent = "\u26A0 " + f;
+        findingsEl.appendChild(div);
+      });
+    }
+
+    /* Confidence */
+    var confEl = document.getElementById("conf-badge");
+    var conf = (diag.confidence || "Low").toUpperCase();
+    confEl.textContent = conf;
+    confEl.className = "conf conf-" + (diag.confidence || "low").toLowerCase();
+
+    /* OSI layer */
+    setText("osi-badge", diag.osi_layer || "N/A");
+
+    /* Root cause */
+    setText("root-cause", diag.root_cause || "No root cause identified.");
+
+    /* Evidence */
+    var evEl = document.getElementById("evidence-list");
+    evEl.innerHTML = "";
+    var evList = diag.evidence || [];
+    if(evList.length === 0){
+      var pe = document.createElement("p");
+      pe.style.cssText = "color:var(--text2);font-size:.88rem";
+      pe.textContent = "No deterministic evidence available.";
+      evEl.appendChild(pe);
+    } else {
+      evList.forEach(function(e){
+        var row = document.createElement("div");
+        row.className = "evidence-item";
+        var bullet = document.createElement("span");
+        bullet.className = "evidence-bullet";
+        bullet.textContent = "\u25B8";
+        var txt = document.createElement("span");
+        txt.textContent = e;
+        row.appendChild(bullet);
+        row.appendChild(txt);
+        evEl.appendChild(row);
+      });
+    }
+
+    /* Next command */
+    setText("next-cmd", diag.next_command || "N/A");
+
+    /* Verification */
+    setText("verify-cmd", diag.verification_command || "N/A");
+
+    /* Fix steps */
+    var fixEl = document.getElementById("fix-steps");
+    fixEl.innerHTML = "";
+    var steps = diag.fix_steps || [];
+    if(steps.length === 0){
+      var ps = document.createElement("p");
+      ps.style.cssText = "color:var(--text2);font-size:.88rem";
+      ps.textContent = "No specific fix steps available.";
+      fixEl.appendChild(ps);
+    } else {
+      steps.forEach(function(s, i){
+        var row = document.createElement("div");
+        row.className = "fix-step";
+        var num = document.createElement("span");
+        num.className = "step-num";
+        num.textContent = (i + 1).toString();
+        var txt = document.createElement("span");
+        txt.textContent = s;
+        row.appendChild(num);
+        row.appendChild(txt);
+        fixEl.appendChild(row);
+      });
+    }
+
+    /* Clear review msg */
+    document.getElementById("review-msg").textContent = "";
+
+    /* Show results */
+    resultsEl.style.display = "block";
+    document.getElementById("rc-card").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+})();
+</script>
+</body>
+</html>
