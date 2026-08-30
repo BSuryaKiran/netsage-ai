@@ -19,7 +19,14 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, abort
+
+# Load environment variables from .env if present
+load_dotenv()
+
+from google import genai
+from google.genai import types
 
 from checker import run_level0_checker
 
@@ -202,6 +209,149 @@ def build_level0_diagnosis(
 
 
 # ---------------------------------------------------------------------------
+# Gemini AI Diagnosis Builder
+# ---------------------------------------------------------------------------
+
+DIAGNOSE_PROMPT_FILE = os.path.join(BASE_DIR, "diagnose_prompt.md")
+
+
+def load_diagnose_prompt() -> str:
+    """Load system instructions from diagnose_prompt.md."""
+    if not os.path.exists(DIAGNOSE_PROMPT_FILE):
+        app.logger.error("diagnose_prompt.md not found at %s", DIAGNOSE_PROMPT_FILE)
+        raise FileNotFoundError("diagnose_prompt.md file not found.")
+    with open(DIAGNOSE_PROMPT_FILE, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def build_ai_diagnosis(
+    symptom: str,
+    show_output: str,
+    topology_note: str,
+    checker_result: dict,
+) -> dict:
+    """
+    Construct prompt and call Gemini AI for structured diagnosis.
+    Validates output structure and constraints before returning.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY_MISSING")
+
+    system_prompt = load_diagnose_prompt()
+
+    findings = checker_result.get("deterministic_findings", [])
+    findings_str = "\n".join([f"- {f}" for f in findings]) if findings else "None detected."
+
+    ai_input = (
+        f"SYMPTOM:\n{symptom}\n\n"
+        f"CISCO SHOW OUTPUT:\n{show_output}\n\n"
+        f"TOPOLOGY / CONTEXT:\n{topology_note if topology_note else 'N/A'}\n\n"
+        f"LEVEL-0 DETERMINISTIC FINDINGS:\n{findings_str}"
+    )
+
+    response_text = None
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+
+    try:
+        client = genai.Client(api_key=api_key)
+        models_to_try = [model_name]
+        fallback_candidates = ["gemini-2.5-flash-lite", "gemini-1.5-flash", "gemini-flash-latest", "gemini-3.6-flash"]
+        for cand in fallback_candidates:
+            if cand not in models_to_try:
+                models_to_try.append(cand)
+
+        last_err = None
+        for m in models_to_try:
+            try:
+                res = client.models.generate_content(
+                    model=m,
+                    contents=ai_input,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json"
+                    )
+                )
+                if res and res.text:
+                    response_text = res.text
+                    break
+            except Exception as exc:
+                app.logger.warning("Gemini model %s failed: %s", m, exc)
+                last_err = exc
+
+        if not response_text:
+            raise RuntimeError(f"Gemini API call failed: {last_err}")
+
+    except ValueError as ve:
+        raise ve
+    except Exception as exc:
+        app.logger.error("Gemini API error: %s", exc)
+        raise RuntimeError("AI diagnosis is temporarily unavailable.")
+
+    # Parse and validate JSON response
+    try:
+        raw_text = response_text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+        raw_text = raw_text.strip()
+
+        data = json.loads(raw_text)
+    except Exception as exc:
+        app.logger.error("Failed to parse Gemini JSON response: %s", exc)
+        raise ValueError("Invalid JSON response from AI model.")
+
+    if not isinstance(data, dict):
+        raise ValueError("AI response must be a JSON object.")
+
+    required_keys = [
+        "root_cause", "osi_layer", "confidence",
+        "evidence", "next_command", "fix_steps", "verification_command"
+    ]
+    for k in required_keys:
+        if k not in data:
+            raise ValueError(f"AI response missing required key: {k}")
+
+    root_cause = str(data.get("root_cause") or "").strip()
+    osi_layer  = str(data.get("osi_layer")  or "").strip()
+    confidence = str(data.get("confidence") or "").strip()
+    evidence   = data.get("evidence")
+    next_cmd   = str(data.get("next_command") or "").strip()
+    fix_steps  = data.get("fix_steps")
+    verify_cmd = str(data.get("verification_command") or "").strip()
+
+    if not root_cause or not next_cmd or not verify_cmd:
+        raise ValueError("Required text fields in AI response cannot be empty.")
+
+    allowed_confidence = ["High", "Medium", "Low"]
+    if confidence not in allowed_confidence:
+        raise ValueError(f"Invalid confidence '{confidence}'. Must be High, Medium, or Low.")
+
+    allowed_osi = ["Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 7"]
+    if osi_layer not in allowed_osi:
+        raise ValueError(f"Invalid osi_layer '{osi_layer}'. Must be one of {allowed_osi}.")
+
+    if not isinstance(evidence, list):
+        raise ValueError("evidence must be a list of strings.")
+
+    if not isinstance(fix_steps, list):
+        raise ValueError("fix_steps must be a list of strings.")
+
+    return {
+        "root_cause": root_cause,
+        "osi_layer": osi_layer,
+        "confidence": confidence,
+        "evidence": [str(e) for e in evidence],
+        "next_command": next_cmd,
+        "fix_steps": [str(s) for s in fix_steps],
+        "verification_command": verify_cmd,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -214,11 +364,12 @@ def serve_frontend():
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check — confirms service is up and identifies diagnostic mode."""
+    mode = "gemini" if os.getenv("GEMINI_API_KEY") else "level0_simulation"
     return jsonify({
         "status": "ok",
         "service": "NetSage AI",
         "version": "1.0",
-        "diagnostic_mode": "level0_simulation",
+        "diagnostic_mode": mode,
         "cases_loaded": len(CASES),
     }), 200
 
@@ -297,23 +448,43 @@ def diagnose():
             "message": "Internal error during rule checking.",
         }), 500
 
-    # --- Build structured diagnosis ---
-    try:
-        ai_diagnosis = build_level0_diagnosis(
-            symptom, show_output, topology_note, osi_layer, checker_result
-        )
-    except Exception as exc:
-        app.logger.error("Diagnosis builder error: %s", exc)
+    # --- Check GEMINI_API_KEY ---
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
         return jsonify({
             "status": "error",
-            "message": "Internal error building diagnosis.",
-        }), 500
+            "message": "Gemini API key is not configured.",
+        }), 503
+
+    # --- Build Gemini AI diagnosis ---
+    try:
+        ai_diagnosis = build_ai_diagnosis(
+            symptom, show_output, topology_note, checker_result
+        )
+        ai_mode = "gemini"
+    except ValueError as ve:
+        if str(ve) == "GEMINI_API_KEY_MISSING":
+            return jsonify({
+                "status": "error",
+                "message": "Gemini API key is not configured.",
+            }), 503
+        app.logger.error("AI diagnosis validation error: %s", ve)
+        return jsonify({
+            "status": "error",
+            "message": "AI diagnosis is temporarily unavailable.",
+        }), 503
+    except Exception as exc:
+        app.logger.error("AI diagnosis error: %s", exc)
+        return jsonify({
+            "status": "error",
+            "message": "AI diagnosis is temporarily unavailable.",
+        }), 503
 
     return jsonify({
         "status": "success",
         "rule_checker": checker_result,
         "ai_diagnosis": ai_diagnosis,
-        "ai_mode": "level0_simulation",
+        "ai_mode": ai_mode,
     }), 200
 
 

@@ -81,6 +81,7 @@ textarea:focus,input[type="text"]:focus,select:focus{outline:none;border-color:v
 
 /* Sim badge */
 .sim-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:700;background:rgba(249,115,22,.12);color:var(--orange);border:1px solid rgba(249,115,22,.3);letter-spacing:.5px;margin-left:8px}
+.gemini-badge{background:rgba(6,182,212,.2);color:#38bdf8;border:1px solid rgba(6,182,212,.5)}
 
 /* Terminal box */
 .terminal{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.88rem;color:var(--green);margin-top:8px;overflow-x:auto;white-space:pre-wrap}
@@ -455,7 +456,7 @@ textarea:focus,input[type="text"]:focus,select:focus{outline:none;border-color:v
     }
 
     runBtn.disabled = true;
-    runBtn.textContent = "ANALYZING...";
+    runBtn.textContent = "Analyzing network evidence with Gemini AI...";
 
     fetch("/api/diagnose", {
       method:"POST",
@@ -473,7 +474,7 @@ textarea:focus,input[type="text"]:focus,select:focus{outline:none;border-color:v
       renderResults(data);
     })
     .catch(function(err){
-      errorEl.textContent = err.message || "Backend unavailable. Make sure the Flask server is running.";
+      errorEl.textContent = err.message || "AI diagnosis is currently unavailable. The deterministic Level-0 checker is still available.";
       errorEl.style.display = "block";
     })
     .finally(function(){
@@ -491,7 +492,16 @@ textarea:focus,input[type="text"]:focus,select:focus{outline:none;border-color:v
 
     /* Mode badge */
     var modeBadge = document.getElementById("mode-badge");
-    modeBadge.textContent = mode === "level0_simulation" ? "LEVEL-0 SIMULATION" : mode.toUpperCase();
+    if(mode === "gemini"){
+      modeBadge.textContent = "GEMINI AI";
+      modeBadge.className = "sim-badge gemini-badge";
+    } else if(mode === "level0_simulation"){
+      modeBadge.textContent = "LEVEL-0 SIMULATION";
+      modeBadge.className = "sim-badge";
+    } else {
+      modeBadge.textContent = mode.toUpperCase();
+      modeBadge.className = "sim-badge";
+    }
 
     /* Rule checker */
     var passed   = rc.rule_checker_passed !== false;
