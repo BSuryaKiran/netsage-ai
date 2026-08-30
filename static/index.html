@@ -36,8 +36,9 @@ a{color:var(--accent)}
 
 /* Inputs */
 label{display:block;font-size:.85rem;font-weight:600;color:var(--text2);margin-bottom:6px;letter-spacing:.3px}
-textarea,input[type="text"]{width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:.88rem;resize:vertical;transition:border-color .2s}
-textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
+textarea,input[type="text"],select{width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:.88rem;resize:vertical;transition:border-color .2s}
+select{font-family:var(--font)}
+textarea:focus,input[type="text"]:focus,select:focus{outline:none;border-color:var(--accent)}
 .input-group{margin-bottom:16px}
 #symptom{min-height:48px}
 #show_output{min-height:120px}
@@ -52,7 +53,7 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
 .btn-accept{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
 .btn-edit{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
 .btn-reject{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3)}
-.btn-accept:hover,.btn-edit:hover,.btn-reject:hover{filter:brightness(1.2)}
+.btn-accept:hover:not(:disabled),.btn-edit:hover:not(:disabled),.btn-reject:hover:not(:disabled){filter:brightness(1.2)}
 .btn-example{background:transparent;color:var(--accent);border:1px solid var(--border);padding:6px 14px;font-size:.78rem;border-radius:6px}
 .btn-example:hover{border-color:var(--accent)}
 
@@ -100,7 +101,25 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
 
 /* Review */
 .review-buttons{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
-.review-msg{margin-top:12px;font-size:.85rem;color:var(--text2);font-style:italic;min-height:20px}
+.review-msg{margin-top:12px;font-size:.88rem;font-weight:600;min-height:20px}
+.review-msg-success{color:var(--green)}
+.review-msg-error{color:var(--red)}
+
+/* Review Status Badge */
+.review-badge{display:inline-inline-flex;align-items:center;padding:6px 16px;border-radius:20px;font-size:.82rem;font-weight:700;letter-spacing:.5px}
+.review-badge-accepted{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
+.review-badge-corrected{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.3)}
+.review-badge-rejected{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+
+/* Review Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-top:12px}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center}
+.stat-value{font-size:1.5rem;font-weight:700;color:var(--accent);font-family:var(--mono)}
+.stat-label{font-size:.75rem;color:var(--text2);margin-top:4px;letter-spacing:.5px}
+
+/* Edit Modal */
+.edit-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,14,23,.85);backdrop-filter:blur(4px);z-index:1000;overflow-y:auto;padding:20px}
+.edit-modal-content{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);max-width:650px;margin:40px auto;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 
 /* Warning */
 .fix-warning{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;color:var(--yellow);margin-top:12px;display:flex;align-items:center;gap:8px}
@@ -228,18 +247,56 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
     <!-- HUMAN REVIEW -->
     <div class="card" id="review-card">
       <div class="card-title"><span class="icon">&#128101;</span> HUMAN REVIEW REQUIRED</div>
-      <p style="color:var(--text2);font-size:.9rem;margin-bottom:4px">
-        AI recommendations must be reviewed by a human network engineer before accepting the proposed fix.
+      <p style="color:var(--text2);font-size:.88rem;margin-bottom:8px">
+        Human review is required before accepting an AI recommendation. Accepting a diagnosis records the review decision; it does not automatically apply network configuration.
       </p>
-      <div class="review-buttons">
-        <button class="btn btn-sm btn-accept" data-action="accept" type="button">&#10003; ACCEPT</button>
-        <button class="btn btn-sm btn-edit" data-action="edit" type="button">&#9998; EDIT &amp; CORRECT</button>
-        <button class="btn btn-sm btn-reject" data-action="reject" type="button">&#10007; REJECT</button>
+
+      <div class="input-group" style="margin-top:12px">
+        <label for="reviewer-note">REVIEWER NOTE (OPTIONAL)</label>
+        <input type="text" id="reviewer-note" placeholder="e.g. Verified on interface Fa0/1 by lead engineer...">
       </div>
+
+      <div class="review-buttons">
+        <button class="btn btn-sm btn-accept" id="btn-accept" data-action="accept" type="button">&#10003; ACCEPT</button>
+        <button class="btn btn-sm btn-edit" id="btn-edit" data-action="edit" type="button">&#9998; EDIT &amp; CORRECT</button>
+        <button class="btn btn-sm btn-reject" id="btn-reject" data-action="reject" type="button">&#10007; REJECT</button>
+      </div>
+
+      <div id="review-status-badge" style="margin-top:12px"></div>
       <div class="review-msg" id="review-msg"></div>
     </div>
 
   </div><!-- /results -->
+
+  <!-- REVIEW STATISTICS -->
+  <div class="card" id="stats-card">
+    <div class="card-title" style="justify-content:space-between">
+      <span><span class="icon">&#128200;</span> REVIEW STATISTICS</span>
+      <button class="btn btn-example" id="refresh-stats-btn" type="button">Refresh Stats</button>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">TOTAL REVIEWS</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-accepted" style="color:var(--green)">0</div>
+        <div class="stat-label">ACCEPTED</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-edited" style="color:var(--yellow)">0</div>
+        <div class="stat-label">EDITED &amp; CORRECTED</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-rejected" style="color:var(--red)">0</div>
+        <div class="stat-label">REJECTED</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-rate">0.0%</div>
+        <div class="stat-label">ACCEPTANCE RATE</div>
+      </div>
+    </div>
+  </div>
 
   <!-- RESPONSIBLE AI GOVERNANCE -->
   <div class="card">
@@ -254,6 +311,66 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
   </div>
 
 </main>
+
+<!-- EDIT & CORRECT MODAL -->
+<div class="edit-modal" id="edit-modal">
+  <div class="edit-modal-content">
+    <div class="card-title"><span class="icon">&#9998;</span> EDIT DIAGNOSIS</div>
+
+    <div class="input-group">
+      <label for="edit-root-cause">ROOT CAUSE DIAGNOSIS *</label>
+      <textarea id="edit-root-cause" rows="3"></textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <label for="edit-osi">OSI LAYER *</label>
+        <select id="edit-osi">
+          <option value="Layer 1">Layer 1</option>
+          <option value="Layer 2">Layer 2</option>
+          <option value="Layer 3">Layer 3</option>
+          <option value="Layer 4">Layer 4</option>
+          <option value="Layer 7">Layer 7</option>
+        </select>
+      </div>
+      <div>
+        <label for="edit-confidence">CONFIDENCE *</label>
+        <select id="edit-confidence">
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label for="edit-evidence">SUPPORTING EVIDENCE (ONE PER LINE)</label>
+      <textarea id="edit-evidence" rows="3"></textarea>
+    </div>
+
+    <div class="input-group">
+      <label for="edit-next-cmd">RECOMMENDED NEXT COMMAND *</label>
+      <input type="text" id="edit-next-cmd">
+    </div>
+
+    <div class="input-group">
+      <label for="edit-fix-steps">FIX STEPS (ONE PER LINE)</label>
+      <textarea id="edit-fix-steps" rows="4"></textarea>
+    </div>
+
+    <div class="input-group">
+      <label for="edit-verify-cmd">VERIFICATION COMMAND *</label>
+      <input type="text" id="edit-verify-cmd">
+    </div>
+
+    <div class="validation-msg" id="edit-val-msg"></div>
+
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-example" id="cancel-edit-btn" type="button">Cancel</button>
+      <button class="btn btn-primary" id="save-edit-btn" style="width:auto" type="button">Submit Correction</button>
+    </div>
+  </div>
+</div>
 
 <!-- FOOTER -->
 <footer class="footer">
@@ -272,6 +389,21 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
   var resultsEl   = document.getElementById("results");
   var errorEl     = document.getElementById("error-card");
   var valMsg      = document.getElementById("validation-msg");
+  var noteEl      = document.getElementById("reviewer-note");
+
+  var btnAccept   = document.getElementById("btn-accept");
+  var btnEdit     = document.getElementById("btn-edit");
+  var btnReject   = document.getElementById("btn-reject");
+  var reviewMsg   = document.getElementById("review-msg");
+  var reviewBadge = document.getElementById("review-status-badge");
+
+  var editModal   = document.getElementById("edit-modal");
+  var editValMsg  = document.getElementById("edit-val-msg");
+
+  var currentDiagnosis = null;
+
+  /* Safe text setter */
+  function setText(id, txt){ document.getElementById(id).textContent = txt || ""; }
 
   /* Load example */
   document.getElementById("load-example").addEventListener("click", function(){
@@ -280,19 +412,31 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
     showEl.value    = "interface FastEthernet0/1\n switchport access vlan 20";
   });
 
-  /* Review buttons (UI-only) */
-  document.querySelectorAll("[data-action]").forEach(function(btn){
-    btn.addEventListener("click", function(){
-      var action = btn.getAttribute("data-action");
-      var labels = {accept:"Accepted",edit:"Edit & Correct",reject:"Rejected"};
-      document.getElementById("review-msg").textContent =
-        "Review action selected: " + (labels[action]||action) +
-        ". Backend review workflow will be implemented in a later step.";
-    });
-  });
+  /* Fetch review statistics */
+  function fetchReviewStats(){
+    fetch("/api/review-stats")
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.status === "success"){
+        setText("stat-total", data.total_reviews);
+        setText("stat-accepted", data.accepted);
+        setText("stat-edited", data.edited_and_corrected);
+        setText("stat-rejected", data.rejected);
+        setText("stat-rate", (data.acceptance_rate !== undefined ? data.acceptance_rate : 0.0) + "%");
+      }
+    })
+    .catch(function(err){ console.error("Error fetching stats:", err); });
+  }
 
-  /* Safe text setter */
-  function setText(id, txt){ document.getElementById(id).textContent = txt || ""; }
+  document.getElementById("refresh-stats-btn").addEventListener("click", fetchReviewStats);
+  fetchReviewStats();
+
+  /* Enable/disable review buttons */
+  function setReviewButtonsDisabled(disabled){
+    btnAccept.disabled = disabled;
+    btnEdit.disabled   = disabled;
+    btnReject.disabled = disabled;
+  }
 
   /* Run diagnosis */
   runBtn.addEventListener("click", function(){
@@ -342,6 +486,8 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
     var rc   = data.rule_checker || {};
     var diag = data.ai_diagnosis || {};
     var mode = data.ai_mode || "unknown";
+
+    currentDiagnosis = diag;
 
     /* Mode badge */
     var modeBadge = document.getElementById("mode-badge");
@@ -443,12 +589,162 @@ textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--accent)}
       });
     }
 
-    /* Clear review msg */
-    document.getElementById("review-msg").textContent = "";
+    /* Reset review state */
+    reviewMsg.textContent = "";
+    reviewMsg.className = "review-msg";
+    reviewBadge.innerHTML = "";
+    noteEl.value = "";
+    setReviewButtonsDisabled(false);
 
     /* Show results */
     resultsEl.style.display = "block";
     document.getElementById("rc-card").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  /* ACCEPT Action */
+  btnAccept.addEventListener("click", function(){
+    if(!currentDiagnosis) return;
+    submitReview("ACCEPT", null);
+  });
+
+  /* REJECT Action */
+  btnReject.addEventListener("click", function(){
+    if(!currentDiagnosis) return;
+    submitReview("REJECT", null);
+  });
+
+  /* EDIT & CORRECT Action */
+  btnEdit.addEventListener("click", function(){
+    if(!currentDiagnosis) return;
+    openEditModal();
+  });
+
+  function openEditModal(){
+    document.getElementById("edit-root-cause").value = currentDiagnosis.root_cause || "";
+    document.getElementById("edit-osi").value        = currentDiagnosis.osi_layer || "Layer 3";
+    document.getElementById("edit-confidence").value = currentDiagnosis.confidence || "Low";
+    document.getElementById("edit-evidence").value   = (currentDiagnosis.evidence || []).join("\n");
+    document.getElementById("edit-next-cmd").value   = currentDiagnosis.next_command || "";
+    document.getElementById("edit-fix-steps").value   = (currentDiagnosis.fix_steps || []).join("\n");
+    document.getElementById("edit-verify-cmd").value = currentDiagnosis.verification_command || "";
+    
+    editValMsg.style.display = "none";
+    editValMsg.textContent = "";
+    editModal.style.display = "block";
+  }
+
+  document.getElementById("cancel-edit-btn").addEventListener("click", function(){
+    editModal.style.display = "none";
+  });
+
+  document.getElementById("save-edit-btn").addEventListener("click", function(){
+    var rootCause = document.getElementById("edit-root-cause").value.trim();
+    var osi       = document.getElementById("edit-osi").value;
+    var conf      = document.getElementById("edit-confidence").value;
+    var evRaw     = document.getElementById("edit-evidence").value.trim();
+    var nextCmd   = document.getElementById("edit-next-cmd").value.trim();
+    var stepsRaw  = document.getElementById("edit-fix-steps").value.trim();
+    var verifyCmd = document.getElementById("edit-verify-cmd").value.trim();
+
+    /* Validation */
+    var allowedConf = ["High", "Medium", "Low"];
+    var allowedOsi  = ["Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 7"];
+
+    if(!rootCause || !osi || !conf || !nextCmd || !verifyCmd){
+      showEditValError("All starred (*) fields are required.");
+      return;
+    }
+
+    if(allowedConf.indexOf(conf) === -1){
+      showEditValError("Confidence must be High, Medium, or Low.");
+      return;
+    }
+
+    if(allowedOsi.indexOf(osi) === -1){
+      showEditValError("OSI Layer must be Layer 1, Layer 2, Layer 3, Layer 4, or Layer 7.");
+      return;
+    }
+
+    var evidence = evRaw ? evRaw.split("\n").map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    var fixSteps = stepsRaw ? stepsRaw.split("\n").map(function(s){ return s.trim(); }).filter(Boolean) : [];
+
+    var correctedDiagnosis = {
+      root_cause: rootCause,
+      osi_layer: osi,
+      confidence: conf,
+      evidence: evidence,
+      next_command: nextCmd,
+      fix_steps: fixSteps,
+      verification_command: verifyCmd
+    };
+
+    submitReview("EDIT_AND_CORRECT", correctedDiagnosis);
+  });
+
+  function showEditValError(msg){
+    editValMsg.textContent = msg;
+    editValMsg.style.display = "block";
+  }
+
+  function submitReview(action, correctedDiagnosis){
+    setReviewButtonsDisabled(true);
+    var reviewerNote = noteEl.value.trim();
+
+    var payload = {
+      action: action,
+      diagnosis: currentDiagnosis,
+      reviewer_note: reviewerNote
+    };
+
+    if(action === "EDIT_AND_CORRECT" && correctedDiagnosis){
+      payload.corrected_diagnosis = correctedDiagnosis;
+    }
+
+    fetch("/api/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(function(r){
+      if(!r.ok){
+        return r.json().then(function(d){ throw new Error(d.message || "Review error " + r.status); });
+      }
+      return r.json();
+    })
+    .then(function(res){
+      if(res.status !== "success"){ throw new Error(res.message || "Failed to submit review."); }
+
+      editModal.style.display = "none";
+
+      var badgeClass = "";
+      var badgeText  = "";
+      var msgText    = "";
+
+      if(action === "ACCEPT"){
+        badgeClass = "review-badge-accepted";
+        badgeText  = "REVIEWED \u2014 ACCEPTED";
+        msgText    = "Diagnosis accepted and recorded.";
+      } else if(action === "REJECT"){
+        badgeClass = "review-badge-rejected";
+        badgeText  = "REVIEWED \u2014 REJECTED";
+        msgText    = "Diagnosis rejected and recorded.";
+      } else if(action === "EDIT_AND_CORRECT"){
+        badgeClass = "review-badge-corrected";
+        badgeText  = "REVIEWED \u2014 CORRECTED";
+        msgText    = "Diagnosis corrected and saved.";
+      }
+
+      reviewBadge.innerHTML = '<span class="review-badge ' + badgeClass + '">' + badgeText + '</span>';
+      reviewMsg.textContent = msgText;
+      reviewMsg.className   = "review-msg review-msg-success";
+
+      fetchReviewStats();
+    })
+    .catch(function(err){
+      setReviewButtonsDisabled(false);
+      reviewMsg.textContent = err.message || "Failed to submit review.";
+      reviewMsg.className   = "review-msg review-msg-error";
+    });
   }
 
 })();

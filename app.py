@@ -17,6 +17,8 @@ No external AI API is used in this stage.
 import csv
 import json
 import os
+import uuid
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request, send_from_directory, abort
 
 from checker import run_level0_checker
@@ -28,8 +30,41 @@ from checker import run_level0_checker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CASES_FILE = os.path.join(BASE_DIR, "cases.csv")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+REVIEW_STORE_FILE = os.path.join(BASE_DIR, "review_store.json")
 
 app = Flask(__name__, static_folder="static")
+
+# ---------------------------------------------------------------------------
+# Review Store Helpers
+# ---------------------------------------------------------------------------
+
+def load_reviews_store() -> dict:
+    """Load reviews from review_store.json. Returns dict with 'reviews' list."""
+    if not os.path.exists(REVIEW_STORE_FILE):
+        return {"reviews": []}
+    try:
+        with open(REVIEW_STORE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and "reviews" in data and isinstance(data["reviews"], list):
+                return data
+            else:
+                app.logger.error("Corrupted structure in review_store.json")
+                raise ValueError("Corrupted structure in review_store.json")
+    except ValueError as ve:
+        raise ve
+    except Exception as exc:
+        app.logger.error("Failed reading review_store.json: %s", exc)
+        raise RuntimeError("Failed to read review_store.json.")
+
+
+def save_review_record(record: dict) -> None:
+    """Append a review record to review_store.json safely without data corruption."""
+    store = load_reviews_store()
+    store["reviews"].append(record)
+    temp_file = REVIEW_STORE_FILE + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(store, f, indent=2)
+    os.replace(temp_file, REVIEW_STORE_FILE)
 
 # ---------------------------------------------------------------------------
 # Case loading
@@ -280,6 +315,154 @@ def diagnose():
         "ai_diagnosis": ai_diagnosis,
         "ai_mode": "level0_simulation",
     }), 200
+
+
+# ---------------------------------------------------------------------------
+# Human Review Workflow Endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/api/review", methods=["POST"])
+def post_review():
+    """
+    Record a human review action (ACCEPT, EDIT_AND_CORRECT, REJECT).
+    Stores the decision and optional correction persistently in review_store.json.
+    """
+    try:
+        data = request.get_json(force=True, silent=True)
+    except Exception:
+        data = None
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "status": "error",
+            "message": "Request body must be valid JSON.",
+        }), 400
+
+    action = (data.get("action") or "").strip()
+    diagnosis = data.get("diagnosis")
+
+    if not action or action not in ["ACCEPT", "EDIT_AND_CORRECT", "REJECT"]:
+        return jsonify({
+            "status": "error",
+            "message": "Valid action (ACCEPT, EDIT_AND_CORRECT, REJECT) is required.",
+        }), 400
+
+    if not isinstance(diagnosis, dict) or not diagnosis:
+        return jsonify({
+            "status": "error",
+            "message": "Diagnosis object is required.",
+        }), 400
+
+    corrected_diagnosis = None
+    if action == "EDIT_AND_CORRECT":
+        corrected_diagnosis = data.get("corrected_diagnosis")
+        if not isinstance(corrected_diagnosis, dict) or not corrected_diagnosis:
+            return jsonify({
+                "status": "error",
+                "message": "corrected_diagnosis object is required when action is EDIT_AND_CORRECT.",
+            }), 400
+
+        required_keys = [
+            "root_cause", "osi_layer", "confidence",
+            "evidence", "next_command", "fix_steps", "verification_command"
+        ]
+        for key in required_keys:
+            if key not in corrected_diagnosis:
+                return jsonify({
+                    "status": "error",
+                    "message": f"corrected_diagnosis missing required field '{key}'.",
+                }), 400
+
+        if not isinstance(corrected_diagnosis.get("evidence"), list):
+            return jsonify({"status": "error", "message": "evidence must be an array."}), 400
+        if not isinstance(corrected_diagnosis.get("fix_steps"), list):
+            return jsonify({"status": "error", "message": "fix_steps must be an array."}), 400
+
+        if corrected_diagnosis.get("confidence") not in ["High", "Medium", "Low"]:
+            return jsonify({"status": "error", "message": "confidence must be High, Medium, or Low."}), 400
+
+        allowed_osi = ["Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 7"]
+        if corrected_diagnosis.get("osi_layer") not in allowed_osi:
+            return jsonify({"status": "error", "message": f"osi_layer must be one of {allowed_osi}."}), 400
+
+    review_id = str(uuid.uuid4())
+    timestamp = datetime.now(timezone.utc).isoformat()
+    reviewer_note = (data.get("reviewer_note") or "").strip()
+
+    record = {
+        "review_id": review_id,
+        "timestamp": timestamp,
+        "action": action,
+        "original_diagnosis": diagnosis,
+        "corrected_diagnosis": corrected_diagnosis,
+        "reviewer_note": reviewer_note,
+    }
+
+    try:
+        save_review_record(record)
+    except Exception as exc:
+        app.logger.error("Failed saving review: %s", exc)
+        return jsonify({
+            "status": "error",
+            "message": "Failed to store review record.",
+        }), 500
+
+    messages = {
+        "ACCEPT": "Diagnosis accepted.",
+        "REJECT": "Diagnosis rejected.",
+        "EDIT_AND_CORRECT": "Diagnosis corrected and saved.",
+    }
+
+    return jsonify({
+        "status": "success",
+        "message": messages[action],
+        "review_id": review_id,
+    }), 200
+
+
+@app.route("/api/reviews", methods=["GET"])
+def get_reviews():
+    """Return all review records stored in review_store.json."""
+    try:
+        store = load_reviews_store()
+        return jsonify({
+            "status": "success",
+            "reviews": store.get("reviews", []),
+        }), 200
+    except Exception as exc:
+        app.logger.error("Failed getting reviews: %s", exc)
+        return jsonify({
+            "status": "error",
+            "message": "Failed to read reviews.",
+        }), 500
+
+
+@app.route("/api/review-stats", methods=["GET"])
+def get_review_stats():
+    """Return summary statistics calculated from review_store.json."""
+    try:
+        store = load_reviews_store()
+        reviews = store.get("reviews", [])
+        total_reviews = len(reviews)
+        accepted = sum(1 for r in reviews if r.get("action") == "ACCEPT")
+        edited_and_corrected = sum(1 for r in reviews if r.get("action") == "EDIT_AND_CORRECT")
+        rejected = sum(1 for r in reviews if r.get("action") == "REJECT")
+        acceptance_rate = round((accepted / total_reviews * 100), 2) if total_reviews > 0 else 0.0
+
+        return jsonify({
+            "status": "success",
+            "total_reviews": total_reviews,
+            "accepted": accepted,
+            "edited_and_corrected": edited_and_corrected,
+            "rejected": rejected,
+            "acceptance_rate": acceptance_rate,
+        }), 200
+    except Exception as exc:
+        app.logger.error("Failed getting review stats: %s", exc)
+        return jsonify({
+            "status": "error",
+            "message": "Failed to compute review stats.",
+        }), 500
 
 
 # ---------------------------------------------------------------------------
