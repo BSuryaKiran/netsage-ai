@@ -1,0 +1,278 @@
+===============================================================================
+               NETSAGE AI — CISCO PACKET TRACER TOPOLOGY & NOTES
+===============================================================================
+
+-------------------------------------------------------------------------------
+1. TOPOLOGY DESCRIPTION
+-------------------------------------------------------------------------------
+The NetSage AI demonstration topology represents a modern, standard 2-VLAN
+Enterprise Branch Office utilizing Router-on-a-Stick inter-VLAN routing.
+
+Device Layout:
+- 1 Router  : R1 (Cisco 2911 / 4331 Router)
+- 1 Switch  : SW1 (Cisco Catalyst 2960 Switch)
+- 1 Server  : Server-1 (Services / DNS Server on VLAN 10)
+- 3 PCs     : PC-1 (VLAN 10 Sales), PC-2 (VLAN 10 Sales), PC-3 (VLAN 20 Eng)
+
+Physical Connections:
+- R1 (GigabitEthernet0/0/0) <---> SW1 (FastEthernet0/24) [802.1Q Trunk]
+- SW1 (FastEthernet0/1)   <---> PC-1 (Sales User 1)      [Access VLAN 10]
+- SW1 (FastEthernet0/2)   <---> PC-2 (Sales User 2)      [Access VLAN 10]
+- SW1 (FastEthernet0/3)   <---> PC-3 (Engineering User)  [Access VLAN 20]
+- SW1 (FastEthernet0/10)  <---> Server-1 (Internal Server)[Access VLAN 10]
+
+
+-------------------------------------------------------------------------------
+2. DEVICE NAMES
+-------------------------------------------------------------------------------
+- R1       : Core Branch Router (Default Gateway)
+- SW1      : Access Layer Switch
+- PC-1     : Sales Workstation 1
+- PC-2     : Sales Workstation 2
+- PC-3     : Engineering Workstation
+- Server-1 : Enterprise DNS / Web Server
+
+
+-------------------------------------------------------------------------------
+3. IP ADDRESSING TABLE
+-------------------------------------------------------------------------------
++----------+-----------------+----------------+-----------------+-----------------+---------+
+| Device   | Interface       | IP Address     | Subnet Mask     | Default Gateway | VLAN    |
++----------+-----------------+----------------+-----------------+-----------------+---------+
+| R1       | G0/0/0.10       | 192.168.10.1   | 255.255.255.0   | N/A (Gateway)   | VLAN 10 |
+| R1       | G0/0/0.20       | 192.168.20.1   | 255.255.255.0   | N/A (Gateway)   | VLAN 20 |
+| PC-1     | FastEthernet0   | 192.168.10.10  | 255.255.255.0   | 192.168.10.1    | VLAN 10 |
+| PC-2     | FastEthernet0   | 192.168.10.11  | 255.255.255.0   | 192.168.10.1    | VLAN 10 |
+| PC-3     | FastEthernet0   | 192.168.20.10  | 255.255.255.0   | 192.168.20.1    | VLAN 20 |
+| Server-1 | FastEthernet0   | 192.168.10.254 | 255.255.255.0   | 192.168.10.1    | VLAN 10 |
++----------+-----------------+----------------+-----------------+-----------------+---------+
+
+
+-------------------------------------------------------------------------------
+4. VLAN CONFIGURATION
+-------------------------------------------------------------------------------
+VLAN 10: Name = Sales       | Subnet: 192.168.10.0/24 | Gateway: 192.168.10.1
+VLAN 20: Name = Engineering | Subnet: 192.168.20.0/24 | Gateway: 192.168.20.1
+
+Switchport Allocation:
+- Fa0/1  : Access VLAN 10 (PC-1)
+- Fa0/2  : Access VLAN 10 (PC-2)
+- Fa0/3  : Access VLAN 20 (PC-3)
+- Fa0/10 : Access VLAN 10 (Server-1)
+- Fa0/24 : Trunk Mode 802.1Q (Connected to R1 G0/0/0)
+
+
+-------------------------------------------------------------------------------
+5. COMMANDS TO VERIFY THE NETWORK
+-------------------------------------------------------------------------------
+On Switch SW1:
+  SW1# show vlan brief
+  SW1# show interface status
+  SW1# show interface trunk
+
+On Router R1:
+  R1# show ip interface brief
+  R1# show ip route
+  R1# show ip arp
+
+On PCs / End Hosts (Command Prompt):
+  ipconfig /all
+  ping 192.168.10.1     (Test local gateway ping)
+  ping 192.168.20.10    (Test inter-VLAN ping from PC-1 to PC-3)
+  ping 192.168.10.254   (Test server connectivity)
+
+
+-------------------------------------------------------------------------------
+6. HOW TO REPRODUCE CASE 1 — VLAN MISMATCH
+-------------------------------------------------------------------------------
+Scenario: PC-1 is assigned IP 192.168.10.10 (VLAN 10 subnet), but its switchport
+Fa0/1 is incorrectly configured for VLAN 20.
+
+Step 1: Open SW1 CLI in Packet Tracer.
+Step 2: Execute the fault injection commands:
+          SW1# configure terminal
+          SW1(config)# interface FastEthernet0/1
+          SW1(config-if)# switchport access vlan 20
+          SW1(config-if)# end
+Step 3: Test ping from PC-1 Command Prompt:
+          ping 192.168.10.1  --> (Fails with Request Timed Out)
+Step 4: Execute Cisco show command to generate evidence for NetSage AI:
+          SW1# show interface FastEthernet0/1 switchport
+        Notice: Access Mode VLAN: 20 (Mismatch with PC IP Subnet 10!)
+
+
+-------------------------------------------------------------------------------
+7. HOW TO REPRODUCE CASE 8 — DUPLICATE IP ADDRESS
+-------------------------------------------------------------------------------
+Scenario: PC-2 is accidentally configured with IP 192.168.10.10, creating an IP
+address conflict with PC-1.
+
+Step 1: Open PC-2 in Packet Tracer -> Desktop -> IP Configuration.
+Step 2: Change IP address from 192.168.10.11 to 192.168.10.10.
+Step 3: Try pinging gateway 192.168.10.1 from PC-1 and PC-2 simultaneously.
+Step 4: Observe intermittent packet drops and ARP flapping.
+Step 5: Execute Cisco verification command on R1:
+          R1# show ip arp
+        Notice: Duplicate IP 192.168.10.10 flapping between two MAC addresses!
+
+
+-------------------------------------------------------------------------------
+8. HOW TO REPRODUCE CASE 10 — GATEWAY SUBNET MISMATCH
+-------------------------------------------------------------------------------
+Scenario: PC-1 has IP 192.168.10.10/24, but its default gateway is set to
+192.168.20.1 (a completely different subnet).
+
+Step 1: Open PC-1 in Packet Tracer -> Desktop -> IP Configuration.
+Step 2: Change Default Gateway from 192.168.10.1 to 192.168.20.1.
+Step 3: Test ping from PC-1 Command Prompt:
+          ping 192.168.20.10 --> (Fails - Destination Host Unreachable)
+Step 4: Execute verification command on PC-1:
+          ipconfig /all
+        Notice: IP is 192.168.10.10, but Gateway is 192.168.20.1 (Subnet mismatch!)
+
+
+-------------------------------------------------------------------------------
+9. HOW TO RESTORE THE NETWORK TO CLEAN / CORRECT STATE
+-------------------------------------------------------------------------------
+To restore all devices to 100% operational state:
+
+On Switch SW1:
+  SW1# configure terminal
+  SW1(config)# interface FastEthernet0/1
+  SW1(config-if)# switchport access vlan 10
+  SW1(config-if)# end
+
+On PC-1:
+  IP Address     : 192.168.10.10
+  Subnet Mask    : 255.255.255.0
+  Default Gateway: 192.168.10.1
+
+On PC-2:
+  IP Address     : 192.168.10.11
+  Subnet Mask    : 255.255.255.0
+  Default Gateway: 192.168.10.1
+
+On PC-3:
+  IP Address     : 192.168.20.10
+  Subnet Mask    : 255.255.255.0
+  Default Gateway: 192.168.20.1
+
+===============================================================================
+                  COMPLETE PACKET TRACER INITIALIZATION SCRIPTS
+===============================================================================
+
+--- COPY-PASTE CLI SCRIPT FOR ROUTER (R1) ---
+NOTE: For Cisco 1941/2901/2911 routers, use 'GigabitEthernet0/0'. 
+      For Cisco 4331 routers, use 'GigabitEthernet0/0/0'.
+
+enable
+configure terminal
+hostname R1
+
+interface GigabitEthernet0/0
+ no shutdown
+ exit
+
+interface GigabitEthernet0/0.10
+ encapsulation dot1Q 10
+ ip address 192.168.10.1 255.255.255.0
+ exit
+
+interface GigabitEthernet0/0.20
+ encapsulation dot1Q 20
+ ip address 192.168.20.1 255.255.255.0
+ exit
+
+end
+write memory
+
+
+--- COPY-PASTE CLI SCRIPT FOR SWITCH (SW1) ---
+enable
+configure terminal
+hostname SW1
+
+vlan 10
+ name Sales
+ exit
+
+vlan 20
+ name Engineering
+ exit
+
+interface FastEthernet0/1
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+ exit
+
+interface FastEthernet0/2
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+ exit
+
+interface FastEthernet0/3
+ switchport mode access
+ switchport access vlan 20
+ no shutdown
+ exit
+
+interface FastEthernet0/10
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+ exit
+
+interface FastEthernet0/24
+ switchport mode trunk
+ no shutdown
+ exit
+
+end
+write memory
+
+===============================================================================
+                    NEXT STEPS: THE 3 FINAL COMPLETION STEPS
+===============================================================================
+
+STEP 1: CONFIGURE IP ADDRESSES ON PCs AND SERVER
+-------------------------------------------------------------------------------
+Open each device in Packet Tracer -> Desktop -> IP Configuration -> Static:
+
+1. PC-1 (Sales Workstation 1):
+   - IP Address     : 192.168.10.10
+   - Subnet Mask    : 255.255.255.0
+   - Default Gateway: 192.168.10.1
+
+2. PC-2 (Sales Workstation 2):
+   - IP Address     : 192.168.10.11
+   - Subnet Mask    : 255.255.255.0
+   - Default Gateway: 192.168.10.1
+
+3. PC-3 (Engineering Workstation):
+   - IP Address     : 192.168.20.10
+   - Subnet Mask    : 255.255.255.0
+   - Default Gateway: 192.168.20.1
+
+4. Server-1 (Services / DNS):
+   - IP Address     : 192.168.10.254
+   - Subnet Mask    : 255.255.255.0
+   - Default Gateway: 192.168.10.1
+
+
+STEP 2: VERIFY INTER-VLAN CONNECTIVITY
+-------------------------------------------------------------------------------
+1. Click PC-1 -> Desktop -> Command Prompt.
+2. Run test pings:
+     ping 192.168.10.1
+     ping 192.168.20.10
+3. Both pings should reply successfully, confirming Inter-VLAN routing works!
+
+
+STEP 3: SAVE THE PACKET TRACER FILE
+-------------------------------------------------------------------------------
+1. In Packet Tracer menu, click File -> Save As...
+2. Save the project inside:
+     e:\My Projects\netsage-ai\packet_tracer\NetSage_AI_Network_Topology.pkt
+===============================================================================

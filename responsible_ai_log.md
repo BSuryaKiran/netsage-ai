@@ -332,3 +332,38 @@
 - Reason Category: unavailable
 - Deterministic Flags: 0
 
+## Event
+- Timestamp: 2026-08-31T08:42:11.631947+00:00
+- Event Type: AI_DIAGNOSIS
+- AI Mode: gemini
+- Deterministic Flags: 0
+- Status: success
+
+## Event
+- Timestamp: 2026-08-31T08:42:22.991688+00:00
+- Event Type: HUMAN_REVIEW
+- Action: ACCEPT
+- AI Mode: gemini
+- Status: recorded
+
+## Event
+- Timestamp: 2026-08-31T08:46:07.303880+00:00
+- Event Type: HUMAN_REVIEW
+- Action: REJECT
+- AI Mode: gemini
+- Status: recorded
+
+## Event
+- Timestamp: 2026-08-31T09:06:25.604253+00:00
+- Event Type: HUMAN_REVIEW
+- Action: ACCEPT
+- AI Mode: gemini
+- Status: recorded
+
+## Event
+- Timestamp: 2026-08-31T09:06:29.447914+00:00
+- Event Type: HUMAN_REVIEW
+- Action: ACCEPT
+- AI Mode: gemini
+- Status: recorded
+
