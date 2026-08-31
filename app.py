@@ -73,6 +73,51 @@ def save_review_record(record: dict) -> None:
         json.dump(store, f, indent=2)
     os.replace(temp_file, REVIEW_STORE_FILE)
 
+
+# ---------------------------------------------------------------------------
+# Responsible AI Logging Helpers
+# ---------------------------------------------------------------------------
+
+LOG_FILE = os.path.join(BASE_DIR, "responsible_ai_log.md")
+
+INITIAL_LOG_HEADER = """# NetSage AI — Responsible AI Log
+
+## System Principles
+
+- AI recommendations are advisory.
+- Human review is required.
+- Network configuration is never automatically applied.
+- Deterministic findings remain traceable.
+- API credentials are never logged.
+
+"""
+
+
+def log_responsible_ai_event(event_type: str, details: dict) -> None:
+    """
+    Safely append a responsible AI event to responsible_ai_log.md without exposing secrets.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    file_exists = os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 5
+
+    lines = [
+        "## Event",
+        f"- Timestamp: {timestamp}",
+        f"- Event Type: {event_type}"
+    ]
+    for key, val in details.items():
+        lines.append(f"- {key}: {val}")
+
+    content_to_write = "\n".join(lines) + "\n\n"
+
+    try:
+        with open(LOG_FILE, "a" if file_exists else "w", encoding="utf-8") as f:
+            if not file_exists:
+                f.write(INITIAL_LOG_HEADER)
+            f.write(content_to_write)
+    except Exception as exc:
+        app.logger.error("Failed writing to responsible_ai_log.md: %s", exc)
+
 # ---------------------------------------------------------------------------
 # Case loading
 # ---------------------------------------------------------------------------
@@ -256,7 +301,7 @@ def build_ai_diagnosis(
     try:
         client = genai.Client(api_key=api_key)
         models_to_try = [model_name]
-        fallback_candidates = ["gemini-2.5-flash-lite", "gemini-1.5-flash", "gemini-flash-latest", "gemini-3.6-flash"]
+        fallback_candidates = ["gemini-3.6-flash", "gemini-3.7-flash"]
         for cand in fallback_candidates:
             if cand not in models_to_try:
                 models_to_try.append(cand)
@@ -448,9 +493,16 @@ def diagnose():
             "message": "Internal error during rule checking.",
         }), 500
 
+    flags_count = checker_result.get("flags_count", 0)
+
     # --- Check GEMINI_API_KEY ---
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
+        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
+            "AI Mode": "gemini",
+            "Deterministic Flags": flags_count,
+            "Status": "unavailable_no_key"
+        })
         return jsonify({
             "status": "error",
             "message": "Gemini API key is not configured.",
@@ -462,19 +514,39 @@ def diagnose():
             symptom, show_output, topology_note, checker_result
         )
         ai_mode = "gemini"
+        log_responsible_ai_event("AI_DIAGNOSIS", {
+            "AI Mode": ai_mode,
+            "Deterministic Flags": flags_count,
+            "Status": "success"
+        })
     except ValueError as ve:
         if str(ve) == "GEMINI_API_KEY_MISSING":
+            log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
+                "AI Mode": "gemini",
+                "Deterministic Flags": flags_count,
+                "Status": "unavailable_no_key"
+            })
             return jsonify({
                 "status": "error",
                 "message": "Gemini API key is not configured.",
             }), 503
         app.logger.error("AI diagnosis validation error: %s", ve)
+        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
+            "AI Mode": "gemini",
+            "Deterministic Flags": flags_count,
+            "Status": "validation_error"
+        })
         return jsonify({
             "status": "error",
             "message": "AI diagnosis is temporarily unavailable.",
         }), 503
     except Exception as exc:
         app.logger.error("AI diagnosis error: %s", exc)
+        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
+            "AI Mode": "gemini",
+            "Deterministic Flags": flags_count,
+            "Status": "unavailable"
+        })
         return jsonify({
             "status": "error",
             "message": "AI diagnosis is temporarily unavailable.",
@@ -571,6 +643,11 @@ def post_review():
 
     try:
         save_review_record(record)
+        log_responsible_ai_event("HUMAN_REVIEW", {
+            "Action": action,
+            "AI Mode": "gemini",
+            "Status": "recorded"
+        })
     except Exception as exc:
         app.logger.error("Failed saving review: %s", exc)
         return jsonify({
