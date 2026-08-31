@@ -36,6 +36,15 @@ Human Review Workflow (review_store.json)
 - **API credential security**: `GEMINI_API_KEY` is loaded strictly from environment variables (`.env`) and never logged or exposed.
 - **Ground-truth protection**: `expected_fault` is strictly excluded from AI prompts and frontend responses.
 
+## AI Availability and Fallback
+
+- **Gemini AI Primary**: Gemini provides AI diagnosis when available.
+- **Level-0 Priority**: The Level-0 deterministic checker always runs first.
+- **Graceful Fallback**: If Gemini is unavailable (e.g. quota limits, authentication failures, or network issues), the application gracefully returns a conservative Level-0 fallback diagnosis.
+- **Transparent Mode Labeling**: Fallback results are explicitly labeled as `LEVEL-0 FALLBACK` (`"ai_mode": "level0_fallback"`) and are never misrepresented as Gemini output.
+- **Human Governance**: Human review remains required for all diagnostic outputs before taking network action.
+- **Zero Automatic Changes**: No network configuration is automatically applied.
+
 ## Running the Application
 
 Start the Flask server using the project virtual environment:
@@ -57,4 +66,4 @@ The system includes a 30-case evaluation dataset (`cases.csv`) covering Layer 1 
 - **Evaluation Date**: 2026-08-31
 - **Dataset Size**: 30 cases
 - **Deterministic Findings Count**: 6 Level-0 findings detected
-- **Note on API Quotas**: Free-tier Gemini API rate limits (20 requests/day per project model) apply during batch evaluation. When quota limits are reached, the system gracefully logs `AI_UNAVAILABLE` status without exposing credentials or crashing.
+- **Note on API Quotas**: Free-tier Gemini API rate limits (20 requests/day per project model) apply during batch evaluation. When quota limits are reached, the system gracefully logs `AI_DIAGNOSIS_FALLBACK` status without exposing credentials or crashing.

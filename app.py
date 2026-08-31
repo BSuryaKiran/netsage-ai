@@ -197,59 +197,115 @@ def _infer_next_command(findings: list[str]) -> str:
     return _DEFAULT_NEXT_CMD
 
 
-def build_level0_diagnosis(
-    symptom: str,
-    show_output: str,
-    topology_note: str,
-    osi_layer: str,
-    checker_result: dict,
-) -> dict:
+def classify_gemini_error(exc: Exception) -> str:
+    """Classify Gemini exception into safe governance reason category."""
+    err_str = str(exc).lower()
+    if "key" in err_str or "auth" in err_str or "unauthorized" in err_str or "permission" in err_str:
+        return "authentication"
+    elif "429" in err_str or "quota" in err_str or "exhausted" in err_str or "resource_exhausted" in err_str:
+        return "quota"
+    elif "timeout" in err_str or "deadline" in err_str or "504" in err_str:
+        return "timeout"
+    elif "json" in err_str or "schema" in err_str or "valueerror" in err_str or "missing" in err_str:
+        return "malformed_response"
+    elif "503" in err_str or "unavailable" in err_str or "connection" in err_str:
+        return "unavailable"
+    return "unavailable"
+
+
+def build_level0_fallback_diagnosis(checker_result: dict) -> dict:
     """
-    Build a structured diagnostic response from Level-0 checker findings.
-
-    This is a DETERMINISTIC simulation — NOT an AI-generated result.
-    It is clearly labelled 'level0_simulation' in the API response.
-
-    Returns a dict matching the diagnose_prompt.md JSON schema.
+    Construct a conservative Level-0 Fallback Diagnosis when Gemini is unavailable.
+    Does NOT invent ungrounded facts. Sets confidence strictly to 'Low'.
     """
-    findings = checker_result.get("deterministic_findings", [])
+    det_findings = checker_result.get("deterministic_findings", [])
+    flags_count = checker_result.get("flags_count", 0)
 
-    if findings:
-        root_cause = "; ".join(findings)
-        confidence = "High"
-        evidence = [f"[Level-0 Deterministic] {f}" for f in findings]
-        layer = _infer_osi_layer(findings, osi_layer)
-        next_cmd = _infer_next_command(findings)
-        fix_steps = [
-            "Review the deterministic finding(s) listed in the evidence.",
-            "Collect the recommended next diagnostic command output.",
-            "Identify the specific device and interface involved.",
-            "Plan the configuration correction.",
-            "Have a human engineer review the fix before applying it.",
-        ]
-        verification = next_cmd
-    else:
-        # No deterministic evidence — return a conservative placeholder.
-        root_cause = "No deterministic Level-0 root cause identified."
-        confidence = "Low"
-        evidence = []
-        layer = osi_layer if osi_layer else "Layer 3"
-        next_cmd = _DEFAULT_NEXT_CMD
-        fix_steps = [
-            "Collect additional Cisco diagnostic output.",
-            "Review the relevant interface and routing configuration.",
-            "Perform human review before applying any change.",
-        ]
-        verification = "ping <gateway>"
+    if flags_count > 0 and det_findings:
+        findings_text = " ".join(det_findings).lower()
+        evidence_list = [f"Deterministic Level-0 finding: {f}" for f in det_findings]
 
+        if "gateway" in findings_text:
+            root_cause = "Host IP and default gateway appear to be configured in different subnets based on Level-0 rule findings."
+            osi_layer = "Layer 3"
+            next_cmd = "show ip interface brief"
+            fix_steps = [
+                "Inspect the host IP address and gateway subnet configurations.",
+                "Update default gateway IP to match the local subnet interface.",
+                "Verify host connectivity after human review."
+            ]
+            verify_cmd = "ping <gateway_ip>"
+
+        elif "vlan" in findings_text:
+            root_cause = "Switchport access VLAN configuration differs from expected topology VLAN based on Level-0 rule findings."
+            osi_layer = "Layer 2"
+            next_cmd = "show vlan brief"
+            fix_steps = [
+                "Inspect the switchport access VLAN assignment.",
+                "Reconfigure switchport access vlan to match target topology.",
+                "Re-test connectivity after human review."
+            ]
+            verify_cmd = "show vlan brief"
+
+        elif "duplicate" in findings_text or "conflict" in findings_text:
+            root_cause = "Duplicate IP address conflict detected on local subnet based on Level-0 rule findings."
+            osi_layer = "Layer 3"
+            next_cmd = "show ip arp"
+            fix_steps = [
+                "Identify conflicting host IP assignments.",
+                "Reassign a unique static or DHCP IP address.",
+                "Clear local ARP tables and verify."
+            ]
+            verify_cmd = "show ip arp"
+
+        elif "shutdown" in findings_text or "down" in findings_text:
+            root_cause = "Target interface is administratively shut down or down/down based on Level-0 rule findings."
+            osi_layer = "Layer 1"
+            next_cmd = "show interface description"
+            fix_steps = [
+                "Enter interface configuration mode.",
+                "Issue 'no shutdown' command.",
+                "Verify interface link status."
+            ]
+            verify_cmd = "show interface status"
+
+        else:
+            root_cause = f"Deterministic configuration issue detected: {det_findings[0]}"
+            osi_layer = "Layer 2"
+            next_cmd = "show running-config"
+            fix_steps = [
+                "Inspect the configuration associated with the deterministic finding.",
+                "Apply corrections only after human review.",
+                "Re-test connectivity."
+            ]
+            verify_cmd = "show interface status"
+
+        return {
+            "root_cause": root_cause,
+            "osi_layer": osi_layer,
+            "confidence": "Low",
+            "evidence": evidence_list,
+            "next_command": next_cmd,
+            "fix_steps": fix_steps,
+            "verification_command": verify_cmd
+        }
+
+    # If no deterministic findings exist:
     return {
-        "root_cause": root_cause,
-        "osi_layer": layer,
-        "confidence": confidence,
-        "evidence": evidence,
-        "next_command": next_cmd,
-        "fix_steps": fix_steps,
-        "verification_command": verification,
+        "root_cause": "Insufficient deterministic evidence to determine the root cause.",
+        "osi_layer": "Layer 1",
+        "confidence": "Low",
+        "evidence": [
+            "Gemini AI was unavailable.",
+            "No deterministic Level-0 violation was detected."
+        ],
+        "next_command": "Review the available Cisco show-command output.",
+        "fix_steps": [
+            "Inspect the relevant interface and protocol configuration.",
+            "Collect additional diagnostic evidence.",
+            "Re-run the diagnosis after obtaining more evidence."
+        ],
+        "verification_command": "Re-run the relevant connectivity test after reviewing the configuration."
     }
 
 
@@ -409,13 +465,11 @@ def serve_frontend():
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check — confirms service is up and identifies diagnostic mode."""
-    mode = "gemini" if os.getenv("GEMINI_API_KEY") else "level0_simulation"
+    api_key_present = bool(os.getenv("GEMINI_API_KEY"))
     return jsonify({
         "status": "ok",
-        "service": "NetSage AI",
-        "version": "1.0",
-        "diagnostic_mode": mode,
-        "cases_loaded": len(CASES),
+        "level0_checker": "available",
+        "gemini_configured": api_key_present
     }), 200
 
 
@@ -445,16 +499,8 @@ def get_case(case_id: str):
 @app.route("/api/diagnose", methods=["POST"])
 def diagnose():
     """
-    Run the Level-0 deterministic checker and return a structured diagnosis.
-
-    Required JSON fields:
-        symptom    (str)
-        show_output (str)
-
-    Optional JSON fields:
-        topology_note  (str, default "")
-        expected_fault (str, default "" — ground truth, not used for diagnosis)
-        osi_layer      (str, default "")
+    Run Level-0 deterministic checker first, then attempt Gemini AI diagnosis.
+    If Gemini fails or is unavailable, return a safe Level-0 fallback response with HTTP 200.
     """
     # --- Parse JSON body ---
     try:
@@ -481,9 +527,8 @@ def diagnose():
     # --- Optional fields ---
     topology_note  = (data.get("topology_note")  or "").strip()
     osi_layer      = (data.get("osi_layer")      or "").strip()
-    # expected_fault is accepted but NOT used for diagnosis (it is ground truth only)
 
-    # --- Run Level-0 checker ---
+    # --- Step 1: Run Level-0 checker ---
     try:
         checker_result = run_level0_checker(symptom, show_output, topology_note)
     except Exception as exc:
@@ -495,20 +540,24 @@ def diagnose():
 
     flags_count = checker_result.get("flags_count", 0)
 
-    # --- Check GEMINI_API_KEY ---
+    # --- Step 2: Check GEMINI_API_KEY ---
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
-            "AI Mode": "gemini",
-            "Deterministic Flags": flags_count,
-            "Status": "unavailable_no_key"
+        log_responsible_ai_event("AI_DIAGNOSIS_FALLBACK", {
+            "AI Mode": "level0_fallback",
+            "Status": "fallback",
+            "Reason Category": "missing_key",
+            "Deterministic Flags": flags_count
         })
+        fallback_diag = build_level0_fallback_diagnosis(checker_result)
         return jsonify({
-            "status": "error",
-            "message": "Gemini API key is not configured.",
-        }), 503
+            "status": "success",
+            "rule_checker": checker_result,
+            "ai_diagnosis": fallback_diag,
+            "ai_mode": "level0_fallback"
+        }), 200
 
-    # --- Build Gemini AI diagnosis ---
+    # --- Step 3: Attempt Gemini AI diagnosis (at most ONE attempt) ---
     try:
         ai_diagnosis = build_ai_diagnosis(
             symptom, show_output, topology_note, checker_result
@@ -519,45 +568,29 @@ def diagnose():
             "Deterministic Flags": flags_count,
             "Status": "success"
         })
-    except ValueError as ve:
-        if str(ve) == "GEMINI_API_KEY_MISSING":
-            log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
-                "AI Mode": "gemini",
-                "Deterministic Flags": flags_count,
-                "Status": "unavailable_no_key"
-            })
-            return jsonify({
-                "status": "error",
-                "message": "Gemini API key is not configured.",
-            }), 503
-        app.logger.error("AI diagnosis validation error: %s", ve)
-        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
-            "AI Mode": "gemini",
-            "Deterministic Flags": flags_count,
-            "Status": "validation_error"
-        })
         return jsonify({
-            "status": "error",
-            "message": "AI diagnosis is temporarily unavailable.",
-        }), 503
-    except Exception as exc:
-        app.logger.error("AI diagnosis error: %s", exc)
-        log_responsible_ai_event("AI_DIAGNOSIS_ERROR", {
-            "AI Mode": "gemini",
-            "Deterministic Flags": flags_count,
-            "Status": "unavailable"
-        })
-        return jsonify({
-            "status": "error",
-            "message": "AI diagnosis is temporarily unavailable.",
-        }), 503
+            "status": "success",
+            "rule_checker": checker_result,
+            "ai_diagnosis": ai_diagnosis,
+            "ai_mode": ai_mode
+        }), 200
 
-    return jsonify({
-        "status": "success",
-        "rule_checker": checker_result,
-        "ai_diagnosis": ai_diagnosis,
-        "ai_mode": ai_mode,
-    }), 200
+    except Exception as exc:
+        reason_cat = classify_gemini_error(exc)
+        app.logger.warning("Gemini AI unavailable (%s): %s", reason_cat, exc)
+        log_responsible_ai_event("AI_DIAGNOSIS_FALLBACK", {
+            "AI Mode": "level0_fallback",
+            "Status": "fallback",
+            "Reason Category": reason_cat,
+            "Deterministic Flags": flags_count
+        })
+        fallback_diag = build_level0_fallback_diagnosis(checker_result)
+        return jsonify({
+            "status": "success",
+            "rule_checker": checker_result,
+            "ai_diagnosis": fallback_diag,
+            "ai_mode": "level0_fallback"
+        }), 200
 
 
 # ---------------------------------------------------------------------------

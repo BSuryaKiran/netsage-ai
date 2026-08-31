@@ -285,3 +285,50 @@
 - Deterministic Flags: 0
 - Status: unavailable
 
+## Event
+- Timestamp: 2026-08-31T05:17:34.365806+00:00
+- Event Type: AI_DIAGNOSIS_FALLBACK
+- AI Mode: level0_fallback
+- Status: fallback
+- Reason Category: unavailable
+- Deterministic Flags: 0
+
+## Event
+- Timestamp: 2026-08-31T05:17:35.094171+00:00
+- Event Type: AI_DIAGNOSIS_FALLBACK
+- AI Mode: level0_fallback
+- Status: fallback
+- Reason Category: unavailable
+- Deterministic Flags: 1
+
+## Event
+- Timestamp: 2026-08-31T05:17:35.776865+00:00
+- Event Type: AI_DIAGNOSIS_FALLBACK
+- AI Mode: level0_fallback
+- Status: fallback
+- Reason Category: unavailable
+- Deterministic Flags: 1
+
+## Event
+- Timestamp: 2026-08-31T05:24:20.902763+00:00
+- Event Type: AI_DIAGNOSIS_FALLBACK
+- AI Mode: level0_fallback
+- Status: fallback
+- Reason Category: unavailable
+- Deterministic Flags: 0
+
+## Event
+- Timestamp: 2026-08-31T05:25:12.760849+00:00
+- Event Type: HUMAN_REVIEW
+- Action: ACCEPT
+- AI Mode: gemini
+- Status: recorded
+
+## Event
+- Timestamp: 2026-08-31T05:26:50.765037+00:00
+- Event Type: AI_DIAGNOSIS_FALLBACK
+- AI Mode: level0_fallback
+- Status: fallback
+- Reason Category: unavailable
+- Deterministic Flags: 0
+
